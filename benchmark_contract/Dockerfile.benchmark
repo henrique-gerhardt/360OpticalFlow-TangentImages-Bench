@@ -7,10 +7,16 @@ ENV PYTHONUNBUFFERED=1 \
 
 COPY requirements.txt /tmp/project-requirements.txt
 COPY benchmark_contract/requirements-benchmark.txt /tmp/requirements-benchmark.txt
-RUN pip install -r /tmp/project-requirements.txt -r /tmp/requirements-benchmark.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libx11-6 \
+    libxcb1 \
+    && rm -rf /var/lib/apt/lists/*
+RUN grep -Ev '^(numpy|opencv-python)$' /tmp/project-requirements.txt > /tmp/project-requirements-docker.txt
+RUN pip install -r /tmp/project-requirements-docker.txt -r /tmp/requirements-benchmark.txt
 
 COPY . /app
 RUN chmod +x /app/benchmark_contract/entrypoint.sh
 
-ENTRYPOINT ["/app/benchmark_contract/entrypoint.sh"]
+ENTRYPOINT ["bash", "/app/benchmark_contract/entrypoint.sh"]
 CMD ["official_reproduction"]

@@ -6,6 +6,58 @@ Adaptacao local do contrato para o projeto `360OpticalFlow-TangentImages`.
 - `evaluate.py` reaproveita as metricas nativas do projeto para EPE/AAE/RMSE e suas variantes esfericas.
 - `profile.py` mede latencia e memoria sem assumir um modelo `torch.nn.Module`.
 
+## Significado dos cenarios
+
+Os tres cenarios do contrato nao representam tres algoritmos diferentes. Eles representam tres objetivos de avaliacao usando o mesmo metodo base.
+
+### `official_reproduction`
+
+Objetivo:
+
+- executar o metodo o mais proximo possivel da configuracao nativa adaptada para este repositorio
+
+Na pratica, neste projeto:
+
+- usa o `PanoOpticalFlow` nativo
+- nao faz resize para modo de eficiencia
+- preserva a configuracao principal de inferencia
+
+Esse e o cenario mais indicado quando voce quer validar a reproducao do metodo.
+
+### `standardized_efficiency`
+
+Objetivo:
+
+- medir eficiencia em uma configuracao mais padronizada para comparacao com outros metodos
+
+Na pratica, neste projeto:
+
+- ativa `resize_for_efficiency: true`
+- usa resolucao de entrada padronizada menor
+- ajusta a quantidade de warmup/runs medidos no profiling
+
+Esse e o cenario mais indicado quando o foco e latencia, throughput e consumo aproximado de memoria.
+
+### `regional_robustness`
+
+Objetivo:
+
+- medir como o erro se distribui em diferentes regioes da imagem ERP, especialmente polos e faixa equatorial
+
+Na pratica, neste projeto:
+
+- usa o mesmo estimador base
+- enfatiza a avaliacao por bandas de latitude
+- reporta diferencas entre regioes polares e equatoriais
+
+Esse e o cenario mais indicado quando o foco e robustez espacial sobre a esfera.
+
+### Resumo pratico
+
+- `official_reproduction`: melhor para reproducao do metodo
+- `standardized_efficiency`: melhor para comparacao de eficiencia
+- `regional_robustness`: melhor para analisar variacao de erro por latitude
+
 ## Build e run em Linux com Docker e GPU NVIDIA
 
 ### 1. Pre-requisitos no host
