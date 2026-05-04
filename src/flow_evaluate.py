@@ -37,7 +37,7 @@ def available_pixel(flow, of_mask=None, unknown_value=UNKNOWN_FLOW_THRESH):
     flow_v = flow[:, :, 1]
 
     # very large optical flow
-    index_unlarge = np.logical_not(abs(flow_u) > unknown_value) | (abs(flow_v) > unknown_value)
+    index_unlarge = (np.absolute(flow_u) <= unknown_value) & (np.absolute(flow_v) <= unknown_value)
     # nan optical flow
     index_unnan = np.logical_not(np.isnan(flow_u) | np.isnan(flow_v))
     # zero optical flow
@@ -168,7 +168,7 @@ def AAE(of_ground_truth, of_evaluation, spherical=False, of_mask=None):
     :retrun: AAE
     :rtype: float
     """
-    aae_mat, of_available_index = AAE_mat(of_ground_truth, of_evaluation, spherical=False, of_mask=None)
+    aae_mat, of_available_index = AAE_mat(of_ground_truth, of_evaluation, spherical=spherical, of_mask=of_mask)
     return np.sum(aae_mat) / np.sum(of_available_index)
 
 
@@ -187,7 +187,7 @@ def AAE_mat(of_ground_truth, of_evaluation, spherical=False, of_mask=None):
 
     # ignore the invalid data
     of_gt_available_index = available_pixel(of_ground_truth, of_mask)
-    of_eva_available_index = available_pixel(of_ground_truth, of_mask)
+    of_eva_available_index = available_pixel(of_evaluation, of_mask)
     of_available_index = of_eva_available_index & of_gt_available_index
     of_unavailable_index = np.logical_not(of_available_index)
     of_gt_u[of_unavailable_index] = 0

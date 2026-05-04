@@ -210,7 +210,7 @@ def erp2ico_image(erp_image, tangent_image_width, padding_size=0.0, full_face_im
         gnom_range_xv, gnom_range_yv = np.meshgrid(gnom_range_x, gnom_range_y)
 
         # the tangent triangle points coordinate in tangent image
-        inside_list = np.full(gnom_range_xv.shape[:2], True, dtype=np.bool)
+        inside_list = np.full(gnom_range_xv.shape[:2], True, dtype=bool)
         if not full_face_image:
             gnom_range_xyv = np.stack((gnom_range_xv.flatten(), gnom_range_yv.flatten()), axis=1)
             pixel_eps = (gnomonic_x_max - gnomonic_x_min) / (tangent_image_width)

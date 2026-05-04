@@ -1,0 +1,16 @@
+FROM pytorch/pytorch:2.2.2-cuda12.1-cudnn8-runtime
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+COPY requirements.txt /tmp/project-requirements.txt
+COPY benchmark_contract/requirements-benchmark.txt /tmp/requirements-benchmark.txt
+RUN pip install -r /tmp/project-requirements.txt -r /tmp/requirements-benchmark.txt
+
+COPY . /app
+RUN chmod +x /app/benchmark_contract/entrypoint.sh
+
+ENTRYPOINT ["/app/benchmark_contract/entrypoint.sh"]
+CMD ["official_reproduction"]

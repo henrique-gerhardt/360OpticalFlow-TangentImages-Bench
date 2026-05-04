@@ -1,0 +1,37 @@
+contract_version: 1.0
+method_name: tangent-images
+method_family: local-reprojection-tangent-images
+paper_year: 2021
+framework: python-opencv
+supports_gpu: false
+
+input_format:
+  image_layout: erp
+  tensor_shape: [H, W, C]
+  dtype: uint8
+
+output_format:
+  flow_layout: erp
+  flow_tensor_shape: [H, W, 2]
+  dtype: float32
+
+checkpoints:
+  default: null
+
+datasets_supported:
+  - replica360
+
+applicability:
+  standalone_checkpoint: false
+  trainable_parameters: false
+  flops_g: false
+
+scenarios_supported:
+  - official_reproduction
+  - standardized_efficiency
+  - regional_robustness
+
+notes:
+  - "Implementation uses the native `src/flow_estimate.PanoOpticalFlow` pipeline."
+  - "No standalone learned checkpoint is required for the default method path."
+  - "Parameters and FLOPs are reported as not applicable because the method is exposed as a classical geometric/OpenCV pipeline instead of a checkpointed torch.nn.Module."

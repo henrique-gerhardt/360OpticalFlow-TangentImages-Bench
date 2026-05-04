@@ -38,7 +38,7 @@ def gnomonic_projection(theta, phi, theta_0, phi_0, label_outrange_pixel=False):
     # get cos_c's zero element index
     zeros_index = cos_c == 0
     if np.any(zeros_index):
-        cos_c[zeros_index] = np.finfo(np.float).eps
+        cos_c[zeros_index] = np.finfo(np.float64).eps
 
     x = np.cos(phi) * np.sin(theta - theta_0) / cos_c
     y = (np.cos(phi_0) * np.sin(phi) - np.sin(phi_0) * np.cos(phi) * np.cos(theta - theta_0)) / cos_c
@@ -78,7 +78,7 @@ def reverse_gnomonic_projection(x, y, theta_0, phi_0, hemisphere_index=None):
     # get rho's zero element index
     zeros_index = rho == 0
     if np.any(zeros_index):
-        rho[zeros_index] = np.finfo(np.float).eps
+        rho[zeros_index] = np.finfo(np.float64).eps
 
     c = np.arctan2(rho, 1)
     phi_ = np.arcsin(np.cos(c) * np.sin(phi_0) + (y * np.sin(c) * np.cos(phi_0)) / rho)
@@ -140,11 +140,11 @@ def gnomonic2pixel(coord_gnom_x, coord_gnom_y,
     # normailzed tangent image space --> tangent image space
     gnomonic2image_width_ratio = (tangent_image_width - 1.0) / (x_max - x_min + padding_size * 2.0)
     coord_pixel_x = (coord_gnom_x - x_min + padding_size) * gnomonic2image_width_ratio
-    coord_pixel_x = (coord_pixel_x + 0.5).astype(np.int)
+    coord_pixel_x = (coord_pixel_x + 0.5).astype(int)
 
     gnomonic2image_height_ratio = (tangent_image_height - 1.0) / (y_max - y_min + padding_size * 2.0)
     coord_pixel_y = -(coord_gnom_y - y_max - padding_size) * gnomonic2image_height_ratio
-    coord_pixel_y = (coord_pixel_y + 0.5).astype(np.int)
+    coord_pixel_y = (coord_pixel_y + 0.5).astype(int)
 
     return coord_pixel_x, coord_pixel_y
 

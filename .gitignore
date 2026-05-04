@@ -5,3 +5,7 @@ code/
 __pycache__/
 *.py[cod]
 *$py.class
+
+.venv/
+benchmark_contract/outputs/*
+benchmark_contract/results/*

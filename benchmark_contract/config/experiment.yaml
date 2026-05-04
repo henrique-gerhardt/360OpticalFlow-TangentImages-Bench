@@ -1,0 +1,20 @@
+experiment:
+  scenario: official_reproduction
+  dataset: replica360
+  scene: hotel_0_circ
+  frame_idx: 0
+  direction: forward
+  checkpoint: null
+  resize_for_efficiency: false
+  save_optional_predictions: true
+  use_existing_project_evaluation: true
+  padding_size: 0.3
+  tangent_image_width_ico: 480
+  flow2rotmat_method: "3D"
+  scenarios:
+    official_reproduction:
+      resize_for_efficiency: false
+    standardized_efficiency:
+      resize_for_efficiency: true
+    regional_robustness:
+      resize_for_efficiency: false

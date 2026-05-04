@@ -160,7 +160,7 @@ def flow2rotation_2d(erp_flow, use_weight=True):
         temp = flow_col_start
         flow_col_start = flow_col_end
         flow_col_end = temp
-    flow_col_center = np.full((erp_image_height, erp_image_width), False, dtype=np.bool)
+    flow_col_center = np.full((erp_image_height, erp_image_width), False, dtype=bool)
     flow_col_center[:, flow_col_start:flow_col_end] = True
     flow_sign = np.sign(np.sum(np.sign(erp_flow[flow_col_center, 1])))
     if flow_sign < 0:

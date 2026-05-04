@@ -1,0 +1,13 @@
+datasets:
+  replica360:
+    root: data/replica_360
+    root_env: REPLICA360_ROOT
+    description: "Replica 360 root. The official released dataset stores scene folders such as hotel_0_circ directly under the root."
+    pano_subdir: null
+    image_pattern: "{frame_idx:04d}_rgb_pano.jpg"
+    flow_forward_pattern: "{frame_idx:04d}_opticalflow_forward_pano.flo"
+    flow_backward_pattern: "{frame_idx:04d}_opticalflow_backward_pano.flo"
+    mask_pattern: "{frame_idx:04d}_mask_pano.png"
+    default_scene: hotel_0_circ
+    default_direction: forward
+    layout: erp

@@ -1,0 +1,17 @@
+runtime:
+  device: cpu
+  precision: fp32
+  batch_size: 1
+  warmup_runs: 2
+  measured_runs: 5
+  input_height: 640
+  input_width: 1280
+  save_predictions: true
+  save_visualizations: true
+  seed: 42
+  scenarios:
+    standardized_efficiency:
+      warmup_runs: 2
+      measured_runs: 8
+      input_height: 512
+      input_width: 1024

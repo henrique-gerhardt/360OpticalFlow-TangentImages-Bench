@@ -52,6 +52,35 @@ def great_circle_distance_uv(points_1_theta, points_1_phi, points_2_theta, point
     return np.abs(radius * central_angle_delta)
 
 
+def get_angle(points_origin, points_1, points_2, eps=1e-10):
+    """
+    Compute the angle at `points_origin` between the great-circle directions
+    towards `points_1` and `points_2`.
+
+    All inputs are spherical coordinates stacked as [theta, phi].
+    """
+    origin_xyz = np.moveaxis(sph2car(points_origin[0], points_origin[1], radius=1.0), 0, -1)
+    points_1_xyz = np.moveaxis(sph2car(points_1[0], points_1[1], radius=1.0), 0, -1)
+    points_2_xyz = np.moveaxis(sph2car(points_2[0], points_2[1], radius=1.0), 0, -1)
+
+    tangent_1 = points_1_xyz - np.sum(points_1_xyz * origin_xyz, axis=-1, keepdims=True) * origin_xyz
+    tangent_2 = points_2_xyz - np.sum(points_2_xyz * origin_xyz, axis=-1, keepdims=True) * origin_xyz
+
+    tangent_1_norm = np.linalg.norm(tangent_1, axis=-1, keepdims=True)
+    tangent_2_norm = np.linalg.norm(tangent_2, axis=-1, keepdims=True)
+    valid = (tangent_1_norm > eps) & (tangent_2_norm > eps)
+
+    tangent_1_unit = tangent_1 / np.maximum(tangent_1_norm, eps)
+    tangent_2_unit = tangent_2 / np.maximum(tangent_2_norm, eps)
+
+    cross_norm = np.linalg.norm(np.cross(tangent_1_unit, tangent_2_unit), axis=-1)
+    dot = np.sum(tangent_1_unit * tangent_2_unit, axis=-1)
+    dot = np.clip(dot, -1.0, 1.0)
+    angles = np.arctan2(cross_norm, dot)
+    angles = np.where(valid[..., 0], angles, 0.0)
+    return np.abs(angles)
+
+
 def erp_sph_modulo(theta, phi):
     """Modulo of the spherical coordinate for the erp coordinate.
     
@@ -139,10 +168,10 @@ def car2sph(points_car, min_radius=1e-10):
 
     valid_list = radius > min_radius  # set the 0 radius to origin.
 
-    theta = np.zeros((points_car.shape[0]), np.float)
+    theta = np.zeros((points_car.shape[0]), dtype=float)
     theta[valid_list] = np.arctan2(points_car[:, 0][valid_list], points_car[:, 2][valid_list])
 
-    phi = np.zeros((points_car.shape[0]), np.float)
+    phi = np.zeros((points_car.shape[0]), dtype=float)
     phi[valid_list] = -np.arcsin(np.divide(points_car[:, 1][valid_list], radius[valid_list]))
 
     return np.stack((theta, phi), axis=1)
