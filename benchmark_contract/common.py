@@ -160,6 +160,7 @@ def get_result_paths() -> Dict[str, Path]:
         "efficiency": RESULTS_DIR / "efficiency_metrics.json",
         "run_config": RESULTS_DIR / "run_config.json",
         "environment": RESULTS_DIR / "environment.json",
+        "paper_comparison": RESULTS_DIR / "paper_reproduction_comparison.json",
         "predictions_npz": OUTPUTS_DIR / "predictions.npz",
         "pred_flow_npy": OUTPUTS_DIR / "pred_flow.npy",
         "pred_flow_native_npy": OUTPUTS_DIR / "pred_flow_native.npy",
@@ -168,6 +169,8 @@ def get_result_paths() -> Dict[str, Path]:
         "gt_flow_npy": OUTPUTS_DIR / "gt_flow.npy",
         "valid_mask_npy": OUTPUTS_DIR / "valid_mask.npy",
         "inference_metadata": OUTPUTS_DIR / "inference_metadata.json",
+        "protocol_rows_json": RESULTS_DIR / "raw_logs" / "replica360_protocol_rows.json",
+        "protocol_rows_csv": RESULTS_DIR / "raw_logs" / "replica360_protocol_rows.csv",
     }
 
 

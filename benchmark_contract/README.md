@@ -5,6 +5,7 @@ Adaptacao local do contrato para o projeto `360OpticalFlow-TangentImages`.
 - O formato validado para a run oficial e o dataset `released`, com cenas como `hotel_0_circ`, `hotel_0_line` e `hotel_0_rand` diretamente sob o root.
 - `evaluate.py` reaproveita as metricas nativas do projeto para EPE/AAE/RMSE e suas variantes esfericas.
 - `profile.py` mede latencia e memoria sem assumir um modelo `torch.nn.Module`.
+- No cenario `official_reproduction`, o contrato percorre o protocolo completo do paper em Replica360 e agrega `circle`, `line`, `random` e `all` no formato da Tabela 1.
 
 ## Significado dos cenarios
 
@@ -21,6 +22,13 @@ Na pratica, neste projeto:
 - usa o `PanoOpticalFlow` nativo
 - nao faz resize para modo de eficiencia
 - preserva a configuracao principal de inferencia
+- em Replica360, executa o protocolo completo do paper em vez de apenas um unico par de imagens
+
+Detalhe importante:
+
+- o contrato gera os agregados `circle`, `line`, `random` e `all`
+- o topo de `quality_metrics.json` passa a refletir diretamente a linha `All` da Tabela 1
+- um arquivo adicional `paper_reproduction_comparison.json` registra os valores de referencia do paper e o delta observado
 
 Esse e o cenario mais indicado quando voce quer validar a reproducao do metodo.
 
@@ -127,6 +135,9 @@ Depois da execucao, os arquivos ficam no host em:
 - `benchmark_contract/results/efficiency_metrics.json`
 - `benchmark_contract/results/run_config.json`
 - `benchmark_contract/results/environment.json`
+- `benchmark_contract/results/paper_reproduction_comparison.json`
+- `benchmark_contract/results/raw_logs/replica360_protocol_rows.json`
+- `benchmark_contract/results/raw_logs/replica360_protocol_rows.csv`
 - `benchmark_contract/outputs/pred_flow.flo`
 - `benchmark_contract/outputs/predictions.npz`
 
@@ -134,4 +145,5 @@ Depois da execucao, os arquivos ficam no host em:
 
 - Se quiser usar o mini-sample local do repositorio, ajuste `benchmark_contract/config/experiment.yaml` para uma cena compativel, como `hotel_0`, e mantenha o root padrao `data/replica_360`.
 - Para a run oficial no dataset `released`, a configuracao padrao do contrato ja espera cenas como `hotel_0_circ` e root vindo de `REPLICA360_ROOT`.
+- A run `official_reproduction` agora e significativamente mais longa, porque cobre 18 cenas `circ`, 18 `line`, 18 `rand` e totaliza 1980 amostras avaliadas no protocolo Replica360.
 - Se quiser uma execucao totalmente empacotada, sem `bind mount`, remova `-v "$PWD":/app -w /app`, mas nesse caso os resultados ficam apenas no filesystem do container.

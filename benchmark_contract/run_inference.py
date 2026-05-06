@@ -23,6 +23,14 @@ from common import (
     set_seed,
     write_json,
 )
+from replica360_protocol import (
+    ProtocolSampleSpec,
+    build_replica360_protocol_samples,
+    compute_sample_metrics,
+    normalize_flow,
+    subset_label,
+    write_protocol_rows_csv,
+)
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -89,31 +97,22 @@ def resize_flow(flow: np.ndarray, width: int, height: int) -> np.ndarray:
     return resized
 
 
-def normalize_flow(flow: np.ndarray) -> np.ndarray:
-    array = np.asarray(flow, dtype=np.float32)
-    if array.ndim != 3:
-        raise ValueError(f"Unexpected optical flow rank: {array.shape}")
-    if array.shape[-1] == 2:
-        return array
-    if array.shape[0] == 2:
-        return np.moveaxis(array, 0, -1).astype(np.float32)
-    raise ValueError(f"Unexpected optical flow shape: {array.shape}")
-
-
-def discover_sample(dataset_cfg: Dict[str, Any], experiment_cfg: Dict[str, Any]) -> SamplePaths:
-    scene_name = experiment_cfg.get("scene") or dataset_cfg.get("default_scene")
-    if not scene_name:
-        raise ValueError("No scene configured for the selected dataset.")
-
+def resolve_sample_dir(dataset_cfg: Dict[str, Any], scene_name: str) -> Path:
     sample_dir = Path(dataset_cfg["root"]) / scene_name
     pano_subdir = dataset_cfg.get("pano_subdir")
     if pano_subdir:
         sample_dir = sample_dir / pano_subdir
+    return sample_dir
 
-    frame_idx = int(experiment_cfg["frame_idx"])
-    direction = experiment_cfg.get("direction", dataset_cfg.get("default_direction", "forward"))
-    offset = 1 if direction == "forward" else -1
-    target_idx = frame_idx + offset
+
+def build_sample_paths(
+    dataset_cfg: Dict[str, Any],
+    scene_name: str,
+    frame_idx: int,
+    target_idx: int,
+    direction: str,
+) -> SamplePaths:
+    sample_dir = resolve_sample_dir(dataset_cfg, scene_name)
 
     image_pattern = dataset_cfg["image_pattern"]
     src_image = sample_dir / image_pattern.format(frame_idx=frame_idx)
@@ -139,6 +138,18 @@ def discover_sample(dataset_cfg: Dict[str, Any], experiment_cfg: Dict[str, Any])
     )
 
 
+def discover_sample(dataset_cfg: Dict[str, Any], experiment_cfg: Dict[str, Any]) -> SamplePaths:
+    scene_name = experiment_cfg.get("scene") or dataset_cfg.get("default_scene")
+    if not scene_name:
+        raise ValueError("No scene configured for the selected dataset.")
+
+    frame_idx = int(experiment_cfg["frame_idx"])
+    direction = experiment_cfg.get("direction", dataset_cfg.get("default_direction", "forward"))
+    offset = 1 if direction == "forward" else -1
+    target_idx = frame_idx + offset
+    return build_sample_paths(dataset_cfg, scene_name, frame_idx, target_idx, direction)
+
+
 def build_estimator(experiment_cfg: Dict[str, Any]):
     estimator = flow_estimate.PanoOpticalFlow()
     estimator.debug_enable = False
@@ -150,12 +161,7 @@ def build_estimator(experiment_cfg: Dict[str, Any]):
     return estimator
 
 
-def prepare_sample(bundle: Dict[str, Any]) -> PreparedSample:
-    dataset_cfg = bundle["dataset"]
-    experiment_cfg = bundle["experiment"]
-    runtime_cfg = bundle["runtime"]
-
-    paths = discover_sample(dataset_cfg, experiment_cfg)
+def prepare_sample_from_paths(paths: SamplePaths, runtime_cfg: Dict[str, Any], experiment_cfg: Dict[str, Any]) -> PreparedSample:
     src_original = np.asarray(image_io.image_read(str(paths.src_image)))
     tgt_original = np.asarray(image_io.image_read(str(paths.tgt_image)))
 
@@ -184,6 +190,14 @@ def prepare_sample(bundle: Dict[str, Any]) -> PreparedSample:
         gt_flow=gt_flow,
         valid_mask=valid_mask,
     )
+
+
+def prepare_sample(bundle: Dict[str, Any]) -> PreparedSample:
+    dataset_cfg = bundle["dataset"]
+    experiment_cfg = bundle["experiment"]
+    runtime_cfg = bundle["runtime"]
+    paths = discover_sample(dataset_cfg, experiment_cfg)
+    return prepare_sample_from_paths(paths, runtime_cfg, experiment_cfg)
 
 
 def predict_flow(estimator: Any, src_image: np.ndarray, tgt_image: np.ndarray) -> np.ndarray:
@@ -220,6 +234,120 @@ def run_inference_once(bundle: Dict[str, Any], estimator: Any | None = None) -> 
     }
 
 
+def run_prepared_sample(sample: PreparedSample, estimator: Any, load_time_ms: float = 0.0) -> Dict[str, Any]:
+    inference_started = time.perf_counter()
+    pred_native = predict_flow(estimator, sample.src_input, sample.tgt_input)
+    pred_native = normalize_flow(flow_postproc.erp_of_wraparound(pred_native))
+    inference_ended = time.perf_counter()
+
+    if sample.gt_flow is not None and pred_native.shape[:2] != sample.gt_flow.shape[:2]:
+        pred_eval = resize_flow(pred_native, sample.gt_flow.shape[1], sample.gt_flow.shape[0])
+    elif pred_native.shape[:2] != sample.src_original.shape[:2]:
+        pred_eval = resize_flow(pred_native, sample.src_original.shape[1], sample.src_original.shape[0])
+    else:
+        pred_eval = pred_native.copy()
+
+    return {
+        "model": estimator,
+        "sample": sample,
+        "pred_flow_native": pred_native,
+        "pred_flow": pred_eval,
+        "load_time_ms": load_time_ms,
+        "inference_time_ms": (inference_ended - inference_started) * 1000.0,
+    }
+
+
+def representative_protocol_spec(bundle: Dict[str, Any]) -> tuple[str, int, str]:
+    experiment_cfg = bundle["experiment"]
+    return (
+        str(experiment_cfg.get("scene")),
+        int(experiment_cfg["frame_idx"]),
+        str(experiment_cfg.get("direction")),
+    )
+
+
+def is_representative_protocol_spec(bundle: Dict[str, Any], spec: ProtocolSampleSpec) -> bool:
+    scene_name, frame_idx, direction = representative_protocol_spec(bundle)
+    return spec.scene == scene_name and spec.frame_idx == frame_idx and spec.direction == direction
+
+
+def protocol_scene_counts(sample_specs: Dict[str, list[ProtocolSampleSpec]]) -> Dict[str, int]:
+    return {
+        subset_label(subset): len({spec.scene for spec in specs})
+        for subset, specs in sample_specs.items()
+    }
+
+
+def protocol_sample_counts(sample_specs: Dict[str, list[ProtocolSampleSpec]]) -> Dict[str, int]:
+    counts = {subset_label(subset): len(specs) for subset, specs in sample_specs.items()}
+    counts["all"] = sum(counts.values())
+    return counts
+
+
+def run_replica360_official_protocol(bundle: Dict[str, Any]) -> Dict[str, Any]:
+    result_paths = get_result_paths()
+    sample_specs = build_replica360_protocol_samples(Path(bundle["dataset"]["root"]))
+
+    load_started = time.perf_counter()
+    estimator = build_estimator(bundle["experiment"])
+    load_ended = time.perf_counter()
+    load_time_ms = (load_ended - load_started) * 1000.0
+
+    rows: list[Dict[str, Any]] = []
+    representative_output: Dict[str, Any] | None = None
+    protocol_started = time.perf_counter()
+
+    for subset in ("circ", "line", "rand"):
+        for spec in sample_specs[subset]:
+            paths = build_sample_paths(
+                bundle["dataset"],
+                scene_name=spec.scene,
+                frame_idx=spec.frame_idx,
+                target_idx=spec.target_idx,
+                direction=spec.direction,
+            )
+            sample = prepare_sample_from_paths(paths, bundle["runtime"], bundle["experiment"])
+            if sample.gt_flow is None:
+                raise FileNotFoundError(f"Ground-truth optical flow missing for protocol sample {spec.scene}:{spec.frame_idx}:{spec.direction}")
+
+            run_output = run_prepared_sample(
+                sample,
+                estimator,
+                load_time_ms=load_time_ms if representative_output is None else 0.0,
+            )
+            sample_metrics = compute_sample_metrics(sample.gt_flow, run_output["pred_flow"], sample.valid_mask)
+            rows.append(
+                {
+                    "subset": subset,
+                    "scene": spec.scene,
+                    "frame_idx": spec.frame_idx,
+                    "target_idx": spec.target_idx,
+                    "direction": spec.direction,
+                    **sample_metrics,
+                }
+            )
+
+            if representative_output is None and is_representative_protocol_spec(bundle, spec):
+                representative_output = run_output
+
+    protocol_ended = time.perf_counter()
+
+    if representative_output is None:
+        representative_output = run_inference_once(bundle, estimator)
+        representative_output["load_time_ms"] = load_time_ms
+
+    write_json(result_paths["protocol_rows_json"], {"rows": rows})
+    write_protocol_rows_csv(result_paths["protocol_rows_csv"], rows)
+    return {
+        "representative_output": representative_output,
+        "protocol_rows": rows,
+        "protocol_name": "replica360_table1",
+        "protocol_total_wall_ms": (protocol_ended - protocol_started) * 1000.0,
+        "protocol_scene_counts": protocol_scene_counts(sample_specs),
+        "protocol_sample_counts": protocol_sample_counts(sample_specs),
+    }
+
+
 def maybe_save_visualization(path: Path, flow: np.ndarray) -> None:
     try:
         vis = flow_vis.flow_to_color(flow, min_ratio=0.2, max_ratio=0.8)
@@ -228,7 +356,12 @@ def maybe_save_visualization(path: Path, flow: np.ndarray) -> None:
         pass
 
 
-def write_prediction_artifacts(bundle: Dict[str, Any], run_output: Dict[str, Any]) -> None:
+def write_prediction_artifacts(
+    bundle: Dict[str, Any],
+    run_output: Dict[str, Any],
+    metadata_updates: Dict[str, Any] | None = None,
+    run_config_updates: Dict[str, Any] | None = None,
+) -> None:
     result_paths = get_result_paths()
     sample: PreparedSample = run_output["sample"]
     pred_flow = run_output["pred_flow"]
@@ -282,36 +415,39 @@ def write_prediction_artifacts(bundle: Dict[str, Any], run_output: Dict[str, Any
             "mask_path": str(sample.paths.mask) if sample.paths.mask is not None else None,
         }
     )
+    if metadata_updates:
+        metadata.update(metadata_updates)
     write_json(metadata_path, metadata)
 
-    write_json(
-        result_paths["run_config"],
-        {
-            "scenario": bundle["experiment"]["scenario"],
-            "dataset": bundle["dataset"]["name"],
-            "dataset_root": str(bundle["dataset"]["root"]),
-            "scene": bundle["experiment"].get("scene"),
-            "frame_idx": int(bundle["experiment"]["frame_idx"]),
-            "direction": bundle["experiment"].get("direction"),
-            "batch_size": int(runtime_cfg["batch_size"]),
-            "precision": runtime_cfg["precision"],
-            "warmup_runs": int(runtime_cfg["warmup_runs"]),
-            "measured_runs": int(runtime_cfg["measured_runs"]),
-            "original_input_height": int(sample.src_original.shape[0]),
-            "original_input_width": int(sample.src_original.shape[1]),
-            "inference_input_height": int(sample.src_input.shape[0]),
-            "inference_input_width": int(sample.src_input.shape[1]),
-            "prediction_height": int(pred_flow.shape[0]),
-            "prediction_width": int(pred_flow.shape[1]),
-            "resize_for_efficiency": bool(bundle["experiment"].get("resize_for_efficiency", False)),
-            "save_optional_predictions": bool(bundle["experiment"].get("save_optional_predictions", False)),
-            "padding_size": float(bundle["experiment"].get("padding_size", 0.3)),
-            "tangent_image_width_ico": int(bundle["experiment"].get("tangent_image_width_ico", 480)),
-            "flow2rotmat_method": bundle["experiment"].get("flow2rotmat_method", "3D"),
-            "estimator_load_wall_ms": run_output["load_time_ms"],
-            "single_inference_wall_ms": run_output["inference_time_ms"],
-        },
-    )
+    run_config = {
+        "scenario": bundle["experiment"]["scenario"],
+        "dataset": bundle["dataset"]["name"],
+        "dataset_root": str(bundle["dataset"]["root"]),
+        "scene": bundle["experiment"].get("scene"),
+        "frame_idx": int(bundle["experiment"]["frame_idx"]),
+        "direction": bundle["experiment"].get("direction"),
+        "batch_size": int(runtime_cfg["batch_size"]),
+        "precision": runtime_cfg["precision"],
+        "warmup_runs": int(runtime_cfg["warmup_runs"]),
+        "measured_runs": int(runtime_cfg["measured_runs"]),
+        "original_input_height": int(sample.src_original.shape[0]),
+        "original_input_width": int(sample.src_original.shape[1]),
+        "inference_input_height": int(sample.src_input.shape[0]),
+        "inference_input_width": int(sample.src_input.shape[1]),
+        "prediction_height": int(pred_flow.shape[0]),
+        "prediction_width": int(pred_flow.shape[1]),
+        "resize_for_efficiency": bool(bundle["experiment"].get("resize_for_efficiency", False)),
+        "save_optional_predictions": bool(bundle["experiment"].get("save_optional_predictions", False)),
+        "padding_size": float(bundle["experiment"].get("padding_size", 0.3)),
+        "tangent_image_width_ico": int(bundle["experiment"].get("tangent_image_width_ico", 480)),
+        "flow2rotmat_method": bundle["experiment"].get("flow2rotmat_method", "3D"),
+        "official_protocol": bundle["experiment"].get("official_protocol"),
+        "estimator_load_wall_ms": run_output["load_time_ms"],
+        "single_inference_wall_ms": run_output["inference_time_ms"],
+    }
+    if run_config_updates:
+        run_config.update(run_config_updates)
+    write_json(result_paths["run_config"], run_config)
 
 
 def main() -> None:
@@ -322,6 +458,26 @@ def main() -> None:
     ensure_contract_dirs()
     bundle = load_scenario_bundle(args.scenario)
     set_seed(int(bundle["runtime"]["seed"]))
+    official_protocol = bundle["experiment"].get("official_protocol")
+
+    if args.scenario == "official_reproduction" and official_protocol == "replica360_table1":
+        protocol_output = run_replica360_official_protocol(bundle)
+        write_prediction_artifacts(
+            bundle,
+            protocol_output["representative_output"],
+            metadata_updates={
+                "official_protocol": protocol_output["protocol_name"],
+                "protocol_scene_counts": protocol_output["protocol_scene_counts"],
+                "protocol_sample_counts": protocol_output["protocol_sample_counts"],
+            },
+            run_config_updates={
+                "official_protocol": protocol_output["protocol_name"],
+                "protocol_scene_counts": protocol_output["protocol_scene_counts"],
+                "protocol_sample_counts": protocol_output["protocol_sample_counts"],
+                "protocol_total_wall_ms": protocol_output["protocol_total_wall_ms"],
+            },
+        )
+        return
 
     run_output = run_inference_once(bundle)
     write_prediction_artifacts(bundle, run_output)

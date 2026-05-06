@@ -11,10 +11,14 @@ experiment:
   padding_size: 0.3
   tangent_image_width_ico: 480
   flow2rotmat_method: "3D"
+  official_protocol: null
   scenarios:
     official_reproduction:
       resize_for_efficiency: false
+      official_protocol: replica360_table1
     standardized_efficiency:
       resize_for_efficiency: true
+      official_protocol: null
     regional_robustness:
       resize_for_efficiency: false
+      official_protocol: null
