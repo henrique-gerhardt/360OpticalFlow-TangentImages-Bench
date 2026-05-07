@@ -21,6 +21,7 @@ from replica360_protocol import (
     build_paper_comparison,
     compute_sample_metrics,
     normalize_flow,
+    prepare_metric_flows,
     summarize_protocol_rows,
     try_metric,
 )
@@ -46,6 +47,7 @@ def build_single_sample_quality(scenario: str, pred: np.ndarray, gt: np.ndarray 
             "notes": ["Ground-truth optical flow was not available for this sample."],
         }
 
+    gt, pred = prepare_metric_flows(gt, pred)
     height, width = pred.shape[:2]
     bands = [(-90, -60), (-60, -30), (-30, 0), (0, 30), (30, 60), (60, 90)]
     masks = latitude_band_masks(height, width, bands)

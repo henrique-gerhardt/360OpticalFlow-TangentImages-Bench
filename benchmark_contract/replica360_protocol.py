@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 import flow_evaluate  # type: ignore
+import flow_postproc  # type: ignore
 
 
 SUBSET_TO_LABEL = {
@@ -88,6 +89,12 @@ def metric_mean(values: Iterable[float]) -> float | None:
     return float(mean(data))
 
 
+def prepare_metric_flows(gt: np.ndarray, pred: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    wrapped_gt = normalize_flow(flow_postproc.erp_of_wraparound(np.asarray(gt, dtype=np.float32).copy()))
+    wrapped_pred = normalize_flow(flow_postproc.erp_of_wraparound(np.asarray(pred, dtype=np.float32).copy()))
+    return wrapped_gt, wrapped_pred
+
+
 def aggregate_metric(metric_name: str, gt: np.ndarray, pred: np.ndarray, mask: np.ndarray | None, spherical: bool = False) -> float | None:
     if metric_name == "epe":
         values, valid = flow_evaluate.EPE_mat(gt.copy(), pred.copy(), spherical=spherical, of_mask=mask)
@@ -127,15 +134,16 @@ def try_metric(
 
 
 def compute_sample_metrics(gt: np.ndarray, pred: np.ndarray, mask: np.ndarray | None) -> Dict[str, Any]:
-    valid = flow_evaluate.available_pixel(gt.copy(), mask)
+    gt_wrapped, pred_wrapped = prepare_metric_flows(gt, pred)
+    valid = flow_evaluate.available_pixel(gt_wrapped.copy(), mask)
     notes: List[str] = []
     metrics = {
-        "aae": try_metric("aae", gt, pred, mask, notes, spherical=False),
-        "epe": try_metric("epe", gt, pred, mask, notes, spherical=False),
-        "rmse": try_metric("rmse", gt, pred, mask, notes, spherical=False),
-        "saae": try_metric("aae", gt, pred, mask, notes, spherical=True),
-        "sepe": try_metric("epe", gt, pred, mask, notes, spherical=True),
-        "srmse": try_metric("rmse", gt, pred, mask, notes, spherical=True),
+        "aae": try_metric("aae", gt_wrapped, pred_wrapped, mask, notes, spherical=False),
+        "epe": try_metric("epe", gt_wrapped, pred_wrapped, mask, notes, spherical=False),
+        "rmse": try_metric("rmse", gt_wrapped, pred_wrapped, mask, notes, spherical=False),
+        "saae": try_metric("aae", gt_wrapped, pred_wrapped, mask, notes, spherical=True),
+        "sepe": try_metric("epe", gt_wrapped, pred_wrapped, mask, notes, spherical=True),
+        "srmse": try_metric("rmse", gt_wrapped, pred_wrapped, mask, notes, spherical=True),
         "valid_pixel_count": int(valid.sum()),
         "valid_pixels_ratio": float(valid.mean()),
     }
